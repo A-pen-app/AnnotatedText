@@ -65,6 +65,8 @@ import androidx.compose.ui.unit.TextUnit
  * Will try to open the url, by launching an an Activity with an
  * [android.content.Intent.ACTION_VIEW] intent. Pass Null to use
  * the default implementation.
+ * @param onClick callback that is executed when users click on non-URL text.
+ * @param onLongClick callback that is executed when users long press the text.
  * @param style style configuration for the text such as color, font, line height etc.
  */
 @Composable
@@ -88,6 +90,8 @@ fun AnnotatedText(
         text.getInlineContentMap(),
     onTextLayout: (TextLayoutResult) -> Unit = {},
     onURLClick: ((String) -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
     style: TextStyle = TextStyle.Default
 ) {
     val textColor = color.takeOrElse {
@@ -120,7 +124,9 @@ fun AnnotatedText(
         maxLines,
         minLines,
         inlineContent,
-        onURLClick
+        onURLClick,
+        onClick,
+        onLongClick
     )
 }
 
@@ -150,6 +156,8 @@ fun AnnotatedText(
  * Will try to open the url, by launching an an Activity with an
  * [android.content.Intent.ACTION_VIEW] intent. Pass Null to use
  * the default implementation.
+ * @param onClick callback that is executed when users click on non-URL text.
+ * @param onLongClick callback that is executed when users long press the text.
  */
 @Composable
 fun BasicAnnotatedText(
@@ -163,9 +171,11 @@ fun BasicAnnotatedText(
     minLines: Int = 1,
     inlineContent: Map<String, InlineTextContent> =
         text.getInlineContentMap(),
-    onURLClick: ((String) -> Unit)? = null
+    onURLClick: ((String) -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null
 ) {
-    if (text.hasUrl or text.paragraphContents.isNotEmpty()) {
+    if (text.hasUrl or text.paragraphContents.isNotEmpty() || onClick != null || onLongClick != null) {
         ClickableAnnotatedText(
             text = text,
             modifier = modifier,
@@ -176,7 +186,9 @@ fun BasicAnnotatedText(
             minLines = minLines,
             inlineContent = inlineContent,
             onTextLayout = onTextLayout,
-            onURLClick = onURLClick
+            onURLClick = onURLClick,
+            onClick = onClick,
+            onLongClick = onLongClick
         )
     } else {
         BasicText(
@@ -204,18 +216,22 @@ private fun ClickableAnnotatedText(
     minLines: Int,
     inlineContent: Map<String, InlineTextContent>,
     onTextLayout: (TextLayoutResult) -> Unit,
-    onURLClick: ((String) -> Unit)?
+    onURLClick: ((String) -> Unit)?,
+    onClick: (() -> Unit)?,
+    onLongClick: (() -> Unit)?
 ) {
     val layoutResult = remember {
         mutableStateOf<TextLayoutResult?>(null)
     }
     var textModifier = modifier
 
-    if (text.hasUrl) {
+    if (text.hasUrl || onClick != null || onLongClick != null) {
         textModifier = textModifier.annotatedTextClickable(
             text,
             layoutResult,
-            onURLClick
+            onURLClick,
+            onClick,
+            onLongClick
         )
     }
 
@@ -253,21 +269,36 @@ private fun ClickableAnnotatedText(
  *  Will try to open the url, by launching an an Activity with an
  *  [android.content.Intent.ACTION_VIEW] intent. Pass Null to use
  *  the default implementation.
+ * @param onClick callback that is executed when users click on non-URL text.
+ * @param onLongClick callback that is executed when users long press the text.
  */
 fun Modifier.annotatedTextClickable(
     text: ContentAnnotatedString,
     layoutResult: MutableState<TextLayoutResult?>,
     onURLClick: ((String) -> Unit)?,
+    onClick: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
 ): Modifier = composed {
-    val onClick = text.toURLClickable(
+    val urlClickHandler = text.toURLClickable(
         onURLClick = onURLClick ?: defaultOnURLClick(LocalContext.current)
     )
-    this.pointerInput(onClick) {
-        detectTapGestures { pos ->
-            layoutResult.value?.let { layoutResult ->
-                onClick(layoutResult.getOffsetForPosition(pos))
+    this.pointerInput(urlClickHandler, onClick, onLongClick) {
+        detectTapGestures(
+            onTap = { pos ->
+                layoutResult.value?.let { layout ->
+                    val offset = layout.getOffsetForPosition(pos)
+                    val hasUrl = text.getURLs(offset, offset).isNotEmpty()
+                    if (hasUrl) {
+                        urlClickHandler(offset)
+                    } else {
+                        onClick?.invoke()
+                    }
+                }
+            },
+            onLongPress = { _ ->
+                onLongClick?.invoke()
             }
-        }
+        )
     }
 }
 

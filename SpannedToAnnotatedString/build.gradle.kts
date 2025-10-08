@@ -1,6 +1,11 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
+    id("maven-publish")
+    id("com.google.devtools.ksp")
 }
 
 android {
@@ -33,8 +38,14 @@ android {
     buildFeatures {
         compose = true
     }
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+            withJavadocJar()
+        }
+    }
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.10"
+        kotlinCompilerExtensionVersion = "1.5.13"
     }
 }
 
@@ -56,4 +67,37 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
-apply(from = "$rootDir/maven/publish.gradle")
+
+fun githubProperties() = getPropertiesFromFile("$rootDir/github.properties")
+
+publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            // Note that your GitHub username should be in lowercase.
+            url = uri("https://maven.pkg.github.com/A-pen-app/AnnotatedText")
+            credentials {
+                username = (githubProperties()["gpr.usr"] as String?) ?: System.getenv("GITHUB_ACTOR")
+                password = (githubProperties()["gpr.key"] as String?) ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
+    publications {
+        register<MavenPublication>("github") {
+            groupId = "com.penpeer"
+            artifactId = "annotated-text-compose"
+            version = "1.0.1"
+
+            afterEvaluate {
+                from(components["release"])
+            }
+        }
+    }
+}
+
+fun getPropertiesFromFile(filePath: String): Properties {
+    val propertiesFile = File(filePath)
+    val properties = Properties()
+    if (propertiesFile.exists()) properties.load(FileInputStream(propertiesFile))
+    return properties
+}
